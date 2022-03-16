@@ -1,0 +1,12 @@
+requests
+beautifulsoup4
+pytest
+lxml
+tinydb
+pandas
+pySerial
+python-periphery
+note-python
+requests_toolbelt
+ConfigArgParse
+
