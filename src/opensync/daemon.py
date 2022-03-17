@@ -238,16 +238,6 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
     while (not shutdown):
         
         if datetime.datetime.now() > next_check:
-            if sdcard is None:
-                try:
-                    sdcard = ezshare.EzShare(kwargs["ezshare_url"])
-                    version = sdcard.version()
-                    logging.info("Connected to ezShare card: %s", version)
-                except requests.exceptions.ConnectionError:
-                    logging.info("Waiting for connection to ezShare card")
-                    sdcard = None
-                    continue
-
             # Schedule the next check
             next_check = datetime.datetime.now() + datetime.timedelta(seconds=kwargs["poll_period"])
 
@@ -264,6 +254,16 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
                 logging.info("External power lost for too long, initiating shutdown")
                 shutdown = True
                 continue
+
+            if sdcard is None:
+                try:
+                    sdcard = ezshare.EzShare(kwargs["ezshare_url"])
+                    version = sdcard.version()
+                    logging.info("Connected to ezShare card: %s", version)
+                except requests.exceptions.ConnectionError:
+                    logging.info("Waiting for connection to ezShare card")
+                    sdcard = None
+                    continue
             
             # List all the files on the SD card
             try:
