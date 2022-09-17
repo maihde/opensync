@@ -40,6 +40,7 @@ import notecard
 
 # Local imports
 from . import ezshare
+from . import flashair
 from . import g1000
 from . import savvy
 from . import notecard_helpers
@@ -59,6 +60,7 @@ try:
     from periphery import I2C
 except ImportError:
     GPIO = None
+    I2C = None
     EXTERNAL_POWER = True
 
 def check_battery_available():
@@ -204,20 +206,20 @@ def opensync_g1000_file_process(db, nCard, **kwargs):
 
     for fpath in sorted(files, key=lambda x: os.path.basename(x)):
         if os.path.isfile(fpath):
-            with open(ff, errors="replace") as f:
+            with open(fpath, errors="replace") as f:
                 record = None
                 flight_log = f.read()
                 try:
-                    record = process_flight_log(kwargs, db, ff, flight_log)
+                    record = process_flight_log(kwargs, db, fpath, flight_log)
                 except (SystemExit, KeyboardInterrupt):
                     raise
                 except:
-                    logging.exception("Unexpected error processing flight log %s", ff)
+                    logging.exception("Unexpected error processing flight log %s", fpath)
                 # If a record was created and we are connected to a notecard,
                 # send the message
                 report_flight(nCard, record, flight_log, **kwargs)
 
-def opensync_g1000_ezshare_process(db, nCard, **kwargs):
+def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
     #############################
     # Running in WiFi SDCard Mode
 
@@ -257,83 +259,95 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
                 shutdown = True
                 continue
 
-            # Check card connection status
-            req = {"req": "hub.status"}
-            rsp = nCard.Transaction(req)
-            logging.debug("hub.status: %s", rsp)
-
-            req = {"req": "hub.sync.status"}
-            rsp = nCard.Transaction(req)
-            logging.debug("hub.sync.status: %s", rsp)
-            if rsp.get("sync") is True:
-                req = {"req": "hub.sync"}
+            if nCard:
+                # Check card connection status
+                req = {"req": "hub.status"}
                 rsp = nCard.Transaction(req)
-                logging.debug("hub.sync: %s", rsp)
+                logging.debug("hub.status: %s", rsp)
 
-            req = {"req": "card.wireless"}
-            rsp = nCard.Transaction(req)
-            logging.debug("card.wireless: %s", rsp)
+                req = {"req": "hub.sync.status"}
+                rsp = nCard.Transaction(req)
+                logging.debug("hub.sync.status: %s", rsp)
+                if rsp.get("sync") is True:
+                    req = {"req": "hub.sync"}
+                    rsp = nCard.Transaction(req)
+                    logging.debug("hub.sync: %s", rsp)
 
-            req = {"req": "card.voltage"}
-            rsp = nCard.Transaction(req)
-            logging.debug("card.voltage: %s", rsp)
+                req = {"req": "card.wireless"}
+                rsp = nCard.Transaction(req)
+                logging.debug("card.wireless: %s", rsp)
 
-            req = {"req": "card.motion"}
-            rsp = nCard.Transaction(req)
-            logging.debug("card.motion: %s", rsp)
+                req = {"req": "card.voltage"}
+                rsp = nCard.Transaction(req)
+                logging.debug("card.voltage: %s", rsp)
 
-            # Get card time
-            logging.info("Requesting card time")
-            req = {"req": "card.time"}
-            rsp = nCard.Transaction(req)
-            logging.debug("Obtained card time %s", rsp)
-            if rsp.get("zone") in (None, "UTC,Unknown") or rsp.get("time") in (None, 0, ""):
-                logging.warning("Failed to obtain card time")
-            else:
-                try:
-                    zone = rsp["zone"].split(",", 1)[-1]
-                    tz = tzinfo=zoneinfo.ZoneInfo(zone)
+                req = {"req": "card.motion"}
+                rsp = nCard.Transaction(req)
+                logging.debug("card.motion: %s", rsp)
 
-                    card_now = datetime.datetime.fromtimestamp(
-                        rsp["time"],
-                        tz
-                    ).astimezone(pytz.UTC)
+                # Get card time
+                logging.info("Requesting card time")
+                req = {"req": "card.time"}
+                rsp = nCard.Transaction(req)
+                logging.debug("Obtained card time %s", rsp)
+                if rsp.get("zone") in (None, "UTC,Unknown") or rsp.get("time") in (None, 0, ""):
+                    logging.warning("Failed to obtain card time")
+                else:
+                    try:
+                        zone = rsp["zone"].split(",", 1)[-1]
+                        tz = tzinfo=zoneinfo.ZoneInfo(zone)
+
+                        card_now = datetime.datetime.fromtimestamp(
+                            rsp["time"],
+                            tz
+                        ).astimezone(pytz.UTC)
 
 
-                    now = datetime.datetime.now().astimezone(pytz.UTC)
-                    tdelta = abs(now - card_now)
-                    logging.info("Card time %s System time %s Delta %s", card_now, now, tdelta)
-                    if tdelta > datetime.timedelta(seconds=2):    
-                        set_time = "sudo date -s '%s'" % card_now.strftime("%Y-%m-%d %H:%M:%S")
-                        logging.debug("Setting time: %s", set_time)
-                        os.system(set_time)
-                except:
-                    logging.exception("Failed to set time")
-                
-
-                    
-
-            # Get card time
-            logging.info("Requesting card location")
-            req = {"req": "card.location"}
-            rsp = nCard.Transaction(req)
-            logging.debug("Obtained card location %s", rsp)
+                        now = datetime.datetime.now().astimezone(pytz.UTC)
+                        tdelta = abs(now - card_now)
+                        logging.info("Card time %s System time %s Delta %s", card_now, now, tdelta)
+                        if tdelta > datetime.timedelta(seconds=2):    
+                            set_time = "sudo date -s '%s'" % card_now.strftime("%Y-%m-%d %H:%M:%S")
+                            logging.debug("Setting time: %s", set_time)
+                            os.system(set_time)
+                    except:
+                        logging.exception("Failed to set time")
+    
+                # Get card location
+                logging.info("Requesting card location")
+                req = {"req": "card.location"}
+                rsp = nCard.Transaction(req)
+                logging.debug("Obtained card location %s", rsp)
 
             if sdcard is None:
-                try:
-                    sdcard = ezshare.EzShare(kwargs["ezshare_url"])
-                    version = sdcard.version()
-                    logging.info("Connected to ezShare card: %s", version)
-                except requests.exceptions.ConnectionError:
-                    logging.info("Waiting for connection to ezShare card")
-                    sdcard = None
-                    continue
+                if kwargs.get("wifi_sdcard") == "ezshare":
+                    try:
+                        sdcard = ezshare.EzShare(kwargs["ezshare_url"])
+                        version = sdcard.version()
+                        logging.info("Connected to ezShare card: %s", version)
+                        data_log_path = "A:%5Cdata_log"
+                    except requests.exceptions.ConnectionError:
+                        logging.info("Waiting for connection to ezShare card")
+                        sdcard = None
+                elif kwargs.get("wifi_sdcard") == "flashair":
+                    try:
+                        sdcard = flashair.FlashAir(kwargs["flashair_url"])
+                        version = sdcard.version()
+                        logging.info("Connected to flashair card: %s", version)
+                        data_log_path = "/data_log"
+                    except requests.exceptions.ConnectionError:
+                        logging.info("Waiting for connection to flashAir card")
+                        sdcard = None
             
+            if sdcard is None or data_log_path is None:
+                continue
+
             # List all the files on the SD card
             try:
-                files = sdcard.files("A:%5Cdata_log")
+                files = sdcard.files(data_log_path)
+                print(files)
             except requests.exceptions.ConnectionError:
-                logging.info("Lost connection to ezShare card")
+                logging.info("Lost connection to sd card")
                 version = None
                 continue
 
@@ -345,7 +359,7 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
             logging.info("Card has %s files on it, %s files pending", len(files), len(pending_files))
     
             # For each file currently on the SD card
-            for short_fname, fname, created_at, filesize in files:
+            for download_fname, fname, created_at, filesize in files:
                 # Check if it's in our local database and skip processing it
                 # unless Force is true
                 Q = Query()
@@ -368,11 +382,11 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
                         # If the file is changing then it's the currently active log file,
                         # download it so that when the batteries are turned off (thus cutting power
                         # to opensync) it can be processed
-                        logging.info("Downloading %s %s", fname, short_fname)
+                        logging.info("Downloading %s %s", fname, download_fname)
                         try:
-                            flight_log = sdcard.download(short_fname)
+                            flight_log = sdcard.download(download_fname)
                         except requests.exceptions.ConnectionError:
-                            logging.info("Lost connection to ezShare card")
+                            logging.info("Lost connection to sd card")
                             version = None
                             break
                         pending_files[fname] = (filesize, flight_log)
@@ -385,13 +399,13 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
                     # If the file hasn't been downloaded yet
                     if flight_log is None:
                         try:
-                            flight_log = sdcard.download(short_fname)
+                            flight_log = sdcard.download(download_fname)
                         except requests.exceptions.ConnectionError:
-                            logging.info("Lost connection to ezShare card")
+                            logging.info("Lost connection to sd card")
                             version = None
                             break
                         
-                    logging.info("Processing %s at %s", fname, short_fname)
+                    logging.info("Processing %s at %s", fname, download_fname)
                     record = None
                     try:
                         record = process_flight_log(kwargs, db, fname, flight_log)
@@ -454,10 +468,11 @@ def opensync_standalone_process(db, nCard, **kwargs):
                 logging.info("External power lost for too long, initiating shutdown")
                 shutdown = True
 
-            logging.info("Checking location")
-            req = {"req": "card.location"}
-            rsp = nCard.Transaction(req)
-            logging.info("Location %s", rsp)
+            if nCard:
+                logging.info("Checking location")
+                req = {"req": "card.location"}
+                rsp = nCard.Transaction(req)
+                logging.info("Location %s", rsp)
 
         # Sleep 1 second
         time.sleep(1)
@@ -477,7 +492,7 @@ def opensync(**kwargs):
 
     # Connect to NoteHub if requested
     nCard = None
-    if kwargs.get("notecard_port"):
+    if kwargs.get("notecard_port") and not kwargs.get("disable_notecard"):
         logging.info("Connecting to notecard on port %s", kwargs.get("notecard_port"))
         if kwargs.get("notecard_mode") == "i2c" and I2C is not None:
             port = I2C(kwargs.get("notecard_port"))
@@ -543,18 +558,19 @@ def opensync(**kwargs):
         req["start"] = True
         rsp = nCard.Transaction(req)
 
-    req = {"req": "card.motion.mode"}
-    req["start"] = True
-    req["seconds"] = 10
-    req["sensitivity"] = 2
-    nCard.Transaction(req)
+        # TODO
+        req = {"req": "card.motion.mode"}
+        req["start"] = True
+        req["seconds"] = 10
+        req["sensitivity"] = 2
+        nCard.Transaction(req)
 
-    req = {"req": "card.motion.sync"}
-    req["start"] = True
-    req["minutes"] = 20
-    req["count"] = 20
-    req["threshold"] = 5
-    nCard.Transaction(req)
+        req = {"req": "card.motion.sync"}
+        req["start"] = True
+        req["minutes"] = 20
+        req["count"] = 20
+        req["threshold"] = 5
+        nCard.Transaction(req)
 
     try:
         # There are three different ways that OpenSync can work:
@@ -564,9 +580,9 @@ def opensync(**kwargs):
         if kwargs.get("files"):
             # Process files provided on command-line
             opensync_g1000_file_process(db, nCard, **kwargs)
-        elif kwargs.get("ezshare_url") and kwargs.get('disable_ezshare') is not True:
+        elif kwargs.get("ezshare_url") and kwargs.get('wifi_sdcard') is not None:
             # Process files obtained from ezShare Wifi
-            opensync_g1000_ezshare_process(db, nCard, **kwargs)
+            opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs)
         else:
             # GPS only
             opensync_standalone_process(db, nCard, **kwargs)
@@ -612,6 +628,11 @@ def main():
         help="the url to connect to the ezShare card"
     )
     parser.add_argument(
+        "--flashair-url",
+        default="http://flashair.local",
+        help="the url to connect to the flashAir card"
+    )
+    parser.add_argument(
         "--savvy-prune-log",
         default=False,
         action="store_true",
@@ -636,10 +657,9 @@ def main():
         help="report zero hours flights"
     )
     parser.add_argument(
-        "--disable-ezshare",
-        default=False,
-        action="store_true",
-        help="disable ezShare WiFi SD card support"
+        "--wifi-sdcard",
+        default=None,
+        help="WiFi SD card type: (flashair, ezshare)"
     )
     parser.add_argument(
         "--enable-shutdown",
@@ -652,6 +672,11 @@ def main():
         default=False,
         action="store_true",
         help="enable GPS tracking"
+    )
+    parser.add_argument(
+        "--disable-notecard",
+        default=False,
+        action="store_true"
     )
     parser.add_argument(
         "--notecard-port",

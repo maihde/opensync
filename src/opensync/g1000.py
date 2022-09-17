@@ -28,11 +28,10 @@ try:
         with open("../dat/optd_por_public_all.csv", encoding="utf-8") as f:
             NeoBase.KEY = 1 # icao_code
             geo_a = NeoBase(f)
-            #print("LOADED")
-            #print(geo_a.get_location("KJYO"))
-    #geo_a = NeoBase()
+    else:
+        geo_a = None
 except ImportError:
-    NeoBase = None
+    geo_a = None
 
 
 def coerce_float(v):
@@ -286,13 +285,13 @@ def summarize_flight_log(flight_log_df):
             'lon': flight_log_df.iloc[ii]['Longitude'],
         }
 
-    if (summary.get('origin_pos') is not None) and (NeoBase is not None):
+    if (summary.get('origin_pos') is not None) and (geo_a is not None):
         point = summary["origin_pos"]["lat"], summary["origin_pos"]["lon"]
         origin_airports = [k for (_, k) in sorted(geo_a.find_near_location(point, 10), key=lambda x: x[0]) ]
         if origin_airports:
             summary["origin"] = origin_airports[0]
 
-    if (summary.get('destination_pos') is not None) and (NeoBase is not None):
+    if (summary.get('destination_pos') is not None) and (geo_a is not None):
         point = summary["destination_pos"]["lat"], summary["destination_pos"]["lon"]
         destination_airports = [k for (_, k) in sorted(geo_a.find_near_location(point, 10), key=lambda x: x[0]) ]
         if destination_airports:
