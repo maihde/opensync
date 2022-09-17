@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="opensync",
-    version="0.0.1",
+    version="0.0.2",
     author="Michael Ihde",
     author_email="mike.ihde@gmail.com",
     description="An open-source flight log syncronization tool compatible with Garmin devices",
