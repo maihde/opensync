@@ -511,6 +511,11 @@ def opensync(**kwargs):
         rsp = nCard.Transaction(req)
         logging.info("Setting periodic mode %s => %s", req, rsp)
 
+        # Log power-up
+        req = {"req": "hub.log"}
+        req["text"] = "Open Sync Has Started"
+        rsp = nCard.Transaction(req)
+
         # Perform a sync now
         logging.info("Performing hub sync")
         req = {"req": "hub.sync"}
