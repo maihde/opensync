@@ -27,6 +27,8 @@ import signal
 import platform
 import io
 import sys
+import zoneinfo
+import pytz
 
 # Pip installed imports
 import requests
@@ -254,6 +256,68 @@ def opensync_g1000_ezshare_process(db, nCard, **kwargs):
                 logging.info("External power lost for too long, initiating shutdown")
                 shutdown = True
                 continue
+
+            # Check card connection status
+            req = {"req": "hub.status"}
+            rsp = nCard.Transaction(req)
+            logging.debug("hub.status: %s", rsp)
+
+            req = {"req": "hub.sync.status"}
+            rsp = nCard.Transaction(req)
+            logging.debug("hub.sync.status: %s", rsp)
+            if rsp.get("sync") is True:
+                req = {"req": "hub.sync"}
+                rsp = nCard.Transaction(req)
+                logging.debug("hub.sync: %s", rsp)
+
+            req = {"req": "card.wireless"}
+            rsp = nCard.Transaction(req)
+            logging.debug("card.wireless: %s", rsp)
+
+            req = {"req": "card.voltage"}
+            rsp = nCard.Transaction(req)
+            logging.debug("card.voltage: %s", rsp)
+
+            req = {"req": "card.motion"}
+            rsp = nCard.Transaction(req)
+            logging.debug("card.motion: %s", rsp)
+
+            # Get card time
+            logging.info("Requesting card time")
+            req = {"req": "card.time"}
+            rsp = nCard.Transaction(req)
+            logging.debug("Obtained card time %s", rsp)
+            if rsp.get("zone") in (None, "UTC,Unknown") or rsp.get("time") in (None, 0, ""):
+                logging.warning("Failed to obtain card time")
+            else:
+                try:
+                    zone = rsp["zone"].split(",", 1)[-1]
+                    tz = tzinfo=zoneinfo.ZoneInfo(zone)
+
+                    card_now = datetime.datetime.fromtimestamp(
+                        rsp["time"],
+                        tz
+                    ).astimezone(pytz.UTC)
+
+
+                    now = datetime.datetime.now().astimezone(pytz.UTC)
+                    tdelta = abs(now - card_now)
+                    logging.info("Card time %s System time %s Delta %s", card_now, now, tdelta)
+                    if tdelta > datetime.timedelta(seconds=2):    
+                        set_time = "sudo date -s '%s'" % card_now.strftime("%Y-%m-%d %H:%M:%S")
+                        logging.debug("Setting time: %s", set_time)
+                        os.system(set_time)
+                except:
+                    logging.exception("Failed to set time")
+                
+
+                    
+
+            # Get card time
+            logging.info("Requesting card location")
+            req = {"req": "card.location"}
+            rsp = nCard.Transaction(req)
+            logging.debug("Obtained card location %s", rsp)
 
             if sdcard is None:
                 try:
