@@ -2,18 +2,34 @@
 
 import notecard
 import logging
+import os
+import time
 
+import opensync
+print(opensync)
 from opensync import notecard_helpers
 
 def opensync(card, **kwargs):
+    # Print out the Notecard version
+    # req = { "req": "card.restart" }
+    # rsp = card.Transaction(req)
+    # logging.debug("Found Notecard %s", rsp)
+
+    time.sleep(10)
+
     # Print out the Notecard version
     req = { "req": "card.version" }
     rsp = card.Transaction(req)
     logging.debug("Found Notecard %s", rsp)
 
+    # req = {"req": "card.wifi"}
+    # req["ssid"] = "FiOS-QJ0JA-Guest"
+    # req["password"] = "goatlamp"
+    # rsp = card.Transaction(req)
+
     # Set minimum hub sync
     req = {"req": "hub.set"}
-    req['mode'] = "minimum"
+    req['mode'] = "continuous"
     if kwargs.get('product'):
         req['product'] = kwargs['product']
     rsp = card.Transaction(req)
@@ -37,7 +53,10 @@ def opensync(card, **kwargs):
 
     try:
         while True:
-            time.sleep(1)
+            req = { "req": "hub.log", "text": "HELLO" }
+            rsp = card.Transaction(req)
+            logging.debug("Found Notecard %s", rsp)
+            time.sleep(30)
     finally:
         notecard_helpers.sync_and_wait(card)
     
@@ -50,12 +69,15 @@ def micropython_main():
         level=logging.DEBUG
     )
 
+    print(os.getcwd())
+    print(os.listdir())
     # Establish the I2C bus and search for notecard
     port = machine.SoftI2C(
         scl=machine.Pin(22),
         sda=machine.Pin(23)
     )
     
+    # Search for the Notecard
     devices = port.scan()
     if 23 not in devices:
         logging.warning("Could not identify Notecard on I2C bus")
@@ -70,11 +92,14 @@ def micropython_main():
 
     # Connect the WiFi
     sta_if = network.WLAN(network.STA_IF)
-    sta_if.active(True)
-    sta_if.connect("ez Share", "88888888")
+    sta_if.active(False)
+    #sta_if.connect("ez Share", "88888888")
     
     # Execute the main
-    opensync(card)
+    opensync(
+        card,
+        product="com.gmail.mike.ihde:opensync"
+    )
 
 if __name__ == "__main__":
     micropython_main()
