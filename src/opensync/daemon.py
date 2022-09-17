@@ -163,7 +163,7 @@ def report_flight(nCard, record, flight_log, **kwargs):
         rsp = nCard.Transaction(req)
 
     if kwargs.get("savvy_aviation_token"):
-        if kwargs.get("savvy_prune_log"):
+        if kwargs.get("savvy_full_log") is not True:
             logging.info("Pruning flight log")
             pruned_flight_log = io.StringIO()
             try:
@@ -633,10 +633,10 @@ def main():
         help="the url to connect to the flashAir card"
     )
     parser.add_argument(
-        "--savvy-prune-log",
+        "--savvy-full-log",
         default=False,
         action="store_true",
-        help="prune the CSV log of unnecessary columns before upload to savvy"
+        help="send full CSV log of unnecessary columns before upload to savvy"
     )
     parser.add_argument(
         "--force",
