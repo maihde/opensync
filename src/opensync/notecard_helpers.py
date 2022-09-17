@@ -75,7 +75,7 @@ def sync_and_wait(card, timeout=None):
         time.sleep(1)
         req = {"req": "hub.sync.status"}
         req["sync"] = False
-        rsp = nCard.Transaction(req)
+        rsp = card.Transaction(req)
         logging.debug("Status hub sync %s", rsp)
 
 class temporary_mode():
