@@ -57,6 +57,7 @@ $ sudo update-rc.d ups.sh defaults
 $ echo 'product: "YOUR_NOTE_HUB_PRODUCT"' >> ~/OpenSync/etc/opensync.conf
 $ sudo systemctl enable opensync
 $ sudo systemctl start opensync
+$ sudo timedatectl set-timezone UTC
 ```
 
 
