@@ -543,6 +543,19 @@ def opensync(**kwargs):
         req["start"] = True
         rsp = nCard.Transaction(req)
 
+    req = {"req": "card.motion.mode"}
+    req["start"] = True
+    req["seconds"] = 10
+    req["sensitivity"] = 2
+    nCard.Transaction(req)
+
+    req = {"req": "card.motion.sync"}
+    req["start"] = True
+    req["minutes"] = 20
+    req["count"] = 20
+    req["threshold"] = 5
+    nCard.Transaction(req)
+
     try:
         # There are three different ways that OpenSync can work:
         #   1. Direct access to G1000 log files, this is useful for testing
