@@ -180,14 +180,17 @@ def report_flight(nCard, record, flight_log, **kwargs):
             savvy_flight_log = flight_log
 
         if nCard:
-            with notecard_helpers.temporary_mode(nCard, "continuous"):
-                savvy.publish_flight_log_notecard(
-                    nCard,
-                    kwargs["savvy_aviation_token"],
-                    kwargs["savvy_aviation_aircraft_id"],
-                    record['fname'],
-                    savvy_flight_log
-                )
+            try:
+                with notecard_helpers.temporary_mode(nCard, "continuous", timeout=kwargs.get("savvy_aviation_timeout")):
+                    savvy.publish_flight_log_notecard(
+                        nCard,
+                        kwargs["savvy_aviation_token"],
+                        kwargs["savvy_aviation_aircraft_id"],
+                        record['fname'],
+                        savvy_flight_log
+                    )
+            except RuntimeError:
+                logging.exception("couldn't publish to savvy aviation")
         else:
             savvy.publish_flight_log_direct(
                 kwargs["savvy_aviation_token"],
@@ -691,6 +694,11 @@ def main():
     )
     parser.add_argument(
         "--savvy-aviation-token"
+    )
+    parser.add_argument(
+        "--savvy-aviation-timeout",
+        default=120,
+        help="connection timeout for making savvy avaition publish"
     )
     parser.add_argument(
         "files",

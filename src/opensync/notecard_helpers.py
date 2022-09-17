@@ -79,11 +79,12 @@ def sync_and_wait(card, timeout=None):
         logging.debug("Status hub sync %s", rsp)
 
 class temporary_mode():
-    def __init__(self, card, mode, wait_for_connection=True):
+    def __init__(self, card, mode, wait_for_connection=True, timeout=None):
         self.card = card
         self.mode = mode
         self.current_mode = None
         self.wait_for_connection = wait_for_connection
+        self.timeout = timeout
 
     def __enter__(self):
         # get the current mode
@@ -108,8 +109,13 @@ class temporary_mode():
 
         
         # wait for the notecard to become connected
+        timeout_at = None
+        if self.timeout is not None:
+            timeout_at = time.time() + self.timeout
         rsp = {}
         while self.wait_for_connection:
+            if timeout_at is not None and time.time() > timeout_at:
+                raise RuntimeError("timeout waiting for continuous connection")
             req = {"req": "hub.status"}
             rsp = self.card.Transaction(req)
             logging.info("Checking connection %s", rsp)

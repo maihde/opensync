@@ -70,22 +70,29 @@ def publish_flight_log_notecard(card, token, aircraft_id, fname, log, chunk_size
 
     payload = mp_encoder.to_string()
 
-    with notecard_helpers.temporary_mode(card, "continuous"):
-        rsp, response_payload = notecard_helpers.web_post(
-            card,
-            "SavvyAnalysis",
-             payload,
-             name=f"{aircraft_id}/",
-             chunk_size=chunk_size,
-             content=mp_encoder.content_type
-        )
+    try:
+        with notecard_helpers.temporary_mode(card, "continuous", timeout=120):
+            try:
+                rsp, response_payload = notecard_helpers.web_post(
+                    card,
+                    "SavvyAnalysis",
+                    payload,
+                    name=f"{aircraft_id}/",
+                    chunk_size=chunk_size,
+                    content=mp_encoder.content_type
+                )
+            except:
+                logging.exception("error publishing to savvy aviation")
+                return
 
-        if rsp.get("result") != 200:
-            logging.warning("Transaction error posting to SavvyAnalysis %s:  %s", rsp, response_payload)
-        if response_payload:
-            response_payload = json.loads(response_payload)
-            if response_payload.get("status") == "Error":
-                logging.warning("Error posting to SavvyAnalysis %s:  %s", rsp, response_payload)
+            if rsp.get("result") != 200:
+                logging.warning("Transaction error posting to SavvyAnalysis %s:  %s", rsp, response_payload)
+            if response_payload:
+                response_payload = json.loads(response_payload)
+                if response_payload.get("status") == "Error":
+                    logging.warning("Error posting to SavvyAnalysis %s:  %s", rsp, response_payload)
+    except RuntimeError:
+        logging.exception("error connection to savvy avaition")
 
 if __name__ == "__main__":
     import argparse
