@@ -23,7 +23,8 @@ setuptools.setup(
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
     data_files=[
-        ('etc', ['cfg/opensync.conf', 'cfg/opensync.service', 'cfg/ups.sh'])
+        ('etc', ['cfg/opensync.conf', 'cfg/opensync.service', 'cfg/ups.sh']),
+        ('dat', ['dat/optd_por_public_all.csv']),
     ],
     entry_points = {
         "console_scripts": [
