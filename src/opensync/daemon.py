@@ -92,7 +92,7 @@ def external_power_available():
         global EXTERNAL_POWER
         return EXTERNAL_POWER
 
-def process_flight_log(cfg, db, fname, flight_log):
+def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
     logging.info("Processing flight log %s", fname)
     flight_log_metadata = re.match("log_(\d+)_(\d+)_(.*).csv", os.path.basename(fname))
 
@@ -142,7 +142,9 @@ def process_flight_log(cfg, db, fname, flight_log):
     else:
         logging.info("Updating record %s:", record)
         db.update(record, (Q.type == "log") & (Q.fname == bfname))
-    flight_log_df.to_pickle(dpath)
+
+    if save_pkl:
+        flight_log_df.to_pickle(dpath)
 
     return flight_log_summary
 
