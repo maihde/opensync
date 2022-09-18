@@ -339,6 +339,8 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         version = sdcard.version()
                         logging.info("Connected to flashair card: %s", version)
                         data_log_path = "/data_log"
+                        if version[9:11] != "W4":
+                            logging.info("Using earlier version of FlashAir")
                     except requests.exceptions.ConnectionError:
                         logging.info("Waiting for connection to flashAir card")
                         sdcard = None
