@@ -427,7 +427,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
 
     logging.info("Beginning shutdown process, processing %s pending files", len(pending_files))
     for fname, (_, flight_log) in pending_files.items():
-        logging.info("Processing %s at %s", fname, short_fname)
+        logging.info("Processing %s", fname)
         record = None
         try:
             record = process_flight_log(kwargs, db, fname, flight_log)
