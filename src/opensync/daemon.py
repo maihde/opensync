@@ -250,17 +250,18 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
 
             # Check that the external power is available, if it's been turned off
             # for more than 1 minute then initiate the shutdown procedure
-            power_status = external_power_available()
-            if power_status and external_power_lost_at is not None:
-                external_power_lost_at = None
-                logging.info("External power restored")
-            elif not power_status and external_power_lost_at is None:
-                external_power_lost_at = datetime.datetime.now()
-                logging.info("External power lost")
-            elif external_power_lost_at is not None and datetime.datetime.now() - external_power_lost_at > datetime.timedelta(seconds=10): # TODO make configurable via kwargs
-                logging.info("External power lost for too long, initiating shutdown")
-                shutdown = True
-                continue
+            if kwargs.get("enable_ups"):
+                power_status = external_power_available()
+                if power_status and external_power_lost_at is not None:
+                    external_power_lost_at = None
+                    logging.info("External power restored")
+                elif not power_status and external_power_lost_at is None:
+                    external_power_lost_at = datetime.datetime.now()
+                    logging.info("External power lost")
+                elif external_power_lost_at is not None and datetime.datetime.now() - external_power_lost_at > datetime.timedelta(seconds=10): # TODO make configurable via kwargs
+                    logging.info("External power lost for too long, initiating shutdown")
+                    shutdown = True
+                    continue
 
             if nCard:
                 # Check card connection status
@@ -669,6 +670,12 @@ def main():
         default=False,
         action="store_true",
         help="send exit code 255 to tell systemctl to shutdown"
+    )
+    parser.add_argument(
+        "--enable-ups",
+        default=False,
+        action="store_true",
+        help="enable use of ups"
     )
     parser.add_argument(
         "--enable-tracking",
