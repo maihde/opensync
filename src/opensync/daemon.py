@@ -250,7 +250,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
 
             # Check that the external power is available, if it's been turned off
             # for more than 1 minute then initiate the shutdown procedure
-            if kwargs.get("enable_ups"):
+            if battery_status == True and kwargs.get("disable_ups") != True:
                 power_status = external_power_available()
                 if power_status and external_power_lost_at is not None:
                     external_power_lost_at = None
@@ -674,7 +674,7 @@ def main():
         help="send exit code 255 to tell systemctl to shutdown"
     )
     parser.add_argument(
-        "--enable-ups",
+        "--disable-ups",
         default=False,
         action="store_true",
         help="enable use of ups"
