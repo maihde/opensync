@@ -24,11 +24,14 @@ from io import StringIO
 import os
 try:
     from neobase import NeoBase, OPTD_POR_URL
-    if os.path.exists("../dat/optd_por_public_all.csv"):
-        with open("../dat/optd_por_public_all.csv", encoding="utf-8") as f:
+    mydir=os.path.dirname(__file__)
+    airport_db=os.path.join(mydir, "../../dat/optd_por_public_all.csv")
+    if os.path.exists(airport_db):
+        with open(airport_db, encoding="utf-8") as f:
             NeoBase.KEY = 1 # icao_code
             geo_a = NeoBase(f)
     else:
+        logging.warning("couldn't find airport database")
         geo_a = None
 except ImportError:
     geo_a = None
