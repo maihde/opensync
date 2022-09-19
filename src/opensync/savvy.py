@@ -79,7 +79,8 @@ def publish_flight_log_notecard(card, token, aircraft_id, fname, log, chunk_size
                     payload,
                     name=f"{aircraft_id}/",
                     chunk_size=chunk_size,
-                    content=mp_encoder.content_type
+                    content=mp_encoder.content_type,
+                    connection_timeout=30
                 )
             except:
                 logging.exception("error publishing to savvy aviation")

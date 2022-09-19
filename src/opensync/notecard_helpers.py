@@ -129,6 +129,9 @@ class temporary_mode():
             logging.info("Checking sync status %s", rsp)
             
             time.sleep(5)
+            if timeout_at is not None:
+                time_remaining = timeout_at - time.time()
+                logging.info("time remaining waiting for continuous connection %s", time_remaining)
 
     def __exit__(self, *args, **kwargs):
         if self.current_mode != self.mode:
@@ -161,13 +164,13 @@ class temporary_segment_delay():
         _notecard.CARD_REQUEST_SEGMENT_DELAY_MS = self.initial_delay_ms
 
 
-def web_post(card, route, payload, name=None, chunk_size=4096, content=None, wait_for_connection=True):
+def web_post(card, route, payload, name=None, chunk_size=4096, content=None, wait_for_connection=True, connection_timeout=None):
     offset = 0
     fragmented = ( len(payload) > chunk_size )
 
     s = time.time()
     # web.post requires continuous mode
-    with temporary_mode(card, "continuous", wait_for_connection=wait_for_connection):
+    with temporary_mode(card, "continuous", wait_for_connection=wait_for_connection, timeout=connection_timeout):
         # Use a faster segment delay on web.post
         with temporary_segment_delay(50):
             while offset < len(payload):
