@@ -28,8 +28,8 @@ def lambda_handler(event, context):
             if flight_summary is None:
                 raise ValueError("Record contained no flight summary!")
             
-            print(f"OpenSync Flight Log {flight_summary['beg_time']} - {flight_summary['origin']}")
-            SUBJECT = f"OpenSync Flight Log {flight_summary['beg_time']} - {flight_summary['origin']}" 
+            print(f"OpenSync Flight Log {flight_summary['beg_time']} : {flight_summary.get('origin', '')} > {flight_summary.get('destination', '')}")
+            SUBJECT = f"OpenSync Flight Log {flight_summary['beg_time']} : {flight_summary.get('origin', '')} > {flight_summary.get('destination', '')}" 
             
             # The HTML body of the email.
         
@@ -37,6 +37,10 @@ def lambda_handler(event, context):
             <body>
                 <h2>Flight Log</h2>
                 <dl>
+                    <dt>Origin</dt>
+                    <dd>{flight_summary.get('origin', '')}</dd>
+                    <dt>Destination</dt>
+                    <dd>{flight_summary.get('destination', '')}</dd>
                     <dt>Hobbs Time</dt>
                     <dd>{flight_summary['hobbs_time']:.1f}</dd>
                     <dt>Flight Time</dt>
