@@ -42,6 +42,7 @@ setuptools.setup(
         "python-periphery",
         "note-python",
         "requests_toolbelt",
-        "ConfigArgParse"
+        "ConfigArgParse",
+        "neobase"
     ],
 )

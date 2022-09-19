@@ -25,17 +25,25 @@ import os
 try:
     from neobase import NeoBase, OPTD_POR_URL
     mydir=os.path.dirname(__file__)
-    airport_db=os.path.join(mydir, "../../dat/optd_por_public_all.csv")
-    if os.path.exists(airport_db):
-        with open(airport_db, encoding="utf-8") as f:
-            NeoBase.KEY = 1 # icao_code
-            geo_a = NeoBase(f)
+    paths_to_check = (
+        os.path.join(mydir, "../../dat/optd_por_public_all.csv"),
+        os.path.expanduser("~/OpenSync/dat/optd_por_public_all.csv"),
+    )
+    for airport_db in paths_to_check:
+        if os.path.exists(airport_db):
+            with open(airport_db, encoding="utf-8") as f:
+                NeoBase.KEY = 1 # icao_code
+                geo_a = NeoBase(f)
+                break
     else:
-        logging.warning("couldn't find airport database")
-        geo_a = None
+        logging.debug("couldn't find airport database")
+    
 except ImportError:
+    logging.debug("cannot lookup airports without neobase")
     geo_a = None
 
+if geo_a is None:
+    logging.warning("cannot lookup airports without neobase and airport database")
 
 def coerce_float(v):
     try:
