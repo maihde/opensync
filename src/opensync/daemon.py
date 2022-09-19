@@ -353,7 +353,6 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
             # List all the files on the SD card
             try:
                 files = sdcard.files(data_log_path)
-                print(files)
             except requests.exceptions.ConnectionError:
                 logging.info("Lost connection to sd card")
                 continue
