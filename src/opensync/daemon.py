@@ -356,7 +356,6 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                 print(files)
             except requests.exceptions.ConnectionError:
                 logging.info("Lost connection to sd card")
-                version = None
                 continue
 
             # Filter out to only include G1000 logss
@@ -395,7 +394,9 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                             flight_log = sdcard.download(download_fname)
                         except requests.exceptions.ConnectionError:
                             logging.info("Lost connection to sd card")
-                            version = None
+                            break
+                        except:
+                            logging.info("Unexpected error downloading file")
                             break
                         pending_files[fname] = (filesize, flight_log)
                         logging.info("File %s current size %s", fname, filesize)   
@@ -410,9 +411,10 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                             flight_log = sdcard.download(download_fname)
                         except requests.exceptions.ConnectionError:
                             logging.info("Lost connection to sd card")
-                            version = None
                             break
-                        
+                        except:
+                            logging.info("Unexpected error downloading file")
+                            break
                     logging.info("Processing %s at %s", fname, download_fname)
                     record = None
                     try:
