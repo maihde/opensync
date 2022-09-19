@@ -307,7 +307,6 @@ def summarize_flight_log(flight_log_df):
         destination_airports = [k for (_, k) in sorted(geo_a.find_near_location(point, 10), key=lambda x: x[0]) ]
         if destination_airports:
             summary["destination"] = destination_airports[0]
-            logging.warning("Couldn't find airport at destination %s", summary.get('destination_pos'))
     else:
         logging.info("Not looking up destination airport")
 
