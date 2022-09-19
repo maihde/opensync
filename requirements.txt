@@ -9,4 +9,5 @@ python-periphery
 note-python
 requests_toolbelt
 ConfigArgParse
+neobase
 
