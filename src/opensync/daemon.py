@@ -549,19 +549,27 @@ def opensync(**kwargs):
         rsp = nCard.Transaction(req)
 
         # Perform a sync now
+        req = {"req": "card.wireless"}
+        rsp = nCard.Transaction(req)
+        logging.info("Card wireless %s", rsp)
+
         logging.info("Performing hub sync")
         req = {"req": "hub.sync"}
-        req["sync"] = True
         rsp = nCard.Transaction(req)
+        rsp["sync"] = True
 
         # Wait until the sync has been completed
         logging.info("Performed hub sync %s", rsp)
+        timeout_at = time.time() + 60 # wait up to one minute for a sync
         while rsp.get("sync", False) is True:
-            time.sleep(1)
+            time.sleep(5)
             req = {"req": "hub.sync.status"}
-            req["sync"] = False
             rsp = nCard.Transaction(req)
             logging.info("Status hub sync %s", rsp)
+
+            if time.time() > timeout_at:
+                logging.warning("continuing without initial sync")
+                break
     
     # If GPS tracking is not disabled, establish it to be once per minute
     if kwargs.get("enable_tracking"):
@@ -607,14 +615,19 @@ def opensync(**kwargs):
         logging.info("Leaving mainloop")
         # Syncronize any remaining notes on shutdown
         if nCard:
+            req = {"req": "card.wireless"}
+            rsp = nCard.Transaction(req)
+            logging.info("Card wireless %s", rsp)
+
             logging.info("Performing hub sync")
             req = {"req": "hub.sync"}
             rsp = nCard.Transaction(req)
+            rsp["sync"] = True
 
             logging.info("Performed hub sync %s", rsp)
             timeout_at = time.time() + 300 # wait up to five minutes for a full sync
             while rsp.get("sync", False) is True:
-                time.sleep(1)
+                time.sleep(5)
                 req = {"req": "hub.sync.status"}
                 req["sync"] = False
                 rsp = nCard.Transaction(req)
