@@ -380,8 +380,9 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                     # and stored in pending files...in practice there should be at most one pending file that
                     # has been fully download
                     flight_log = None
-                    if (pending_files.get(fname)) is None:
+                    if (pending_files.get(fname)) is None or filesize < 128:
                         # If the file stays the same size it will get processed next check
+                        logging.debug("File %s is currently %s bytes", fname, filesize)
                         pending_files[fname] = (filesize, None)
                         continue
                     elif (pending_files[fname][0] != filesize):
@@ -401,6 +402,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         logging.info("File %s current size %s", fname, filesize)   
                         continue
                     else:
+                        logging.debug("File %s is not longer pending at %s bytes", fname, filesize)
                         # The file hasn't changed size, so it can be processed now
                         _, flight_log = pending_files.pop(fname)
 
