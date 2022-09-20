@@ -450,17 +450,6 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
         # send the message
         report_flight(nCard, record, flight_log, **kwargs)
 
-    # TODO make sure all sceduled notes are sent before powering off
-    if nCard is not None:
-        logging.info("Waiting for hub to sync")
-        rsp["sync"] = True
-        while rsp.get("sync") == True:
-            req = {"req": "hub.sync.status"}
-            req["sync"] = True
-            rsp = nCard.Transaction(req)
-            logging.info("Hub sync status", rsp)
-            time.sleep(5)
-
 def opensync_standalone_process(db, nCard, **kwargs):
     # Check if a battery is available, if not then once the batteries are turned off
     # the OpenSync will immediately lose power and not process the flight until the
@@ -614,20 +603,25 @@ def opensync(**kwargs):
             # GPS only
             opensync_standalone_process(db, nCard, **kwargs)
     finally:
+        logging.info("Leaving mainloop")
         # Syncronize any remaining notes on shutdown
         if nCard:
             logging.info("Performing hub sync")
-            req = {"req": "hub.sync"}
+            req = {"req": "hub.sync.status"}
             req["sync"] = True
             rsp = nCard.Transaction(req)
 
             logging.info("Performed hub sync %s", rsp)
+            timeout_at = time.time() + 120 # wait up to two minutes for a full sync
             while rsp.get("sync", False) is True:
                 time.sleep(1)
                 req = {"req": "hub.sync.status"}
                 req["sync"] = False
                 rsp = nCard.Transaction(req)
                 logging.info("Status hub sync %s", rsp)
+                if (time.time() > timeout_at):
+                    logging.warning("exiting with unsyncronized notes")
+                    break
 
 def main():
     import configargparse
