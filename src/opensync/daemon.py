@@ -612,7 +612,7 @@ def opensync(**kwargs):
             rsp = nCard.Transaction(req)
 
             logging.info("Performed hub sync %s", rsp)
-            timeout_at = time.time() + 120 # wait up to two minutes for a full sync
+            timeout_at = time.time() + 300 # wait up to five minutes for a full sync
             while rsp.get("sync", False) is True:
                 time.sleep(1)
                 req = {"req": "hub.sync.status"}
