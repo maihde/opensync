@@ -536,6 +536,7 @@ def opensync(**kwargs):
         # Set periodic hub sync by default
         req = {"req": "hub.set"}
         req['mode'] = "periodic"
+        req['outbound'] = 2
         if kwargs.get('product'):
             req['product'] = kwargs['product']
         logging.info("Setting periodic mode %s", rsp)
@@ -607,8 +608,7 @@ def opensync(**kwargs):
         # Syncronize any remaining notes on shutdown
         if nCard:
             logging.info("Performing hub sync")
-            req = {"req": "hub.sync.status"}
-            req["sync"] = True
+            req = {"req": "hub.sync"}
             rsp = nCard.Transaction(req)
 
             logging.info("Performed hub sync %s", rsp)
