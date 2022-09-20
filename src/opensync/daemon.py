@@ -164,7 +164,7 @@ def report_flight(nCard, record, flight_log, **kwargs):
         req["body"] = record
         rsp = nCard.Transaction(req)
 
-    if kwargs.get("savvy_aviation_token"):
+    if kwargs.get("savvy_aviation_token") and kwargs.get("disable_savvy") != True:
         if kwargs.get("savvy_full_log") is not True:
             logging.info("Pruning flight log")
             pruned_flight_log = io.StringIO()
@@ -700,6 +700,11 @@ def main():
     parser.add_argument(
         "--notecard-mode",
         default="i2c"
+    )
+    parser.add_argument(
+        "--disable-savvy",
+        default=False,
+        action="store_true"
     )
     parser.add_argument(
         "--savvy-aviation-aircraft-id"
