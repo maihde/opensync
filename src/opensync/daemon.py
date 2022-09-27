@@ -109,6 +109,9 @@ def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
             logging.info("Already have processed %s", bfname)
             return
 
+    if flight_log is None:
+        return None
+
     airframe_info, flight_log_df = g1000.parse_flight_log(flight_log)
     
     dname = os.path.splitext(bfname)[0] + ".pkl"
