@@ -339,6 +339,10 @@ def summarize_flight_log(flight_log_df):
     else:
         logging.info("Not looking up destination airport")
 
+    summary['engine_still_running'] = bool( flight_log_df.iloc[-1]['E1 RPM'] > 500 )
+    summary['final_ias'] = flight_log_df.iloc[-1]['IAS']
+    summary['final_alt'] = flight_log_df.iloc[-1]['AltMSL']
+
     return summary
 
 DEFAULT_KEEP_COLUMNS = (

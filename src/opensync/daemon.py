@@ -115,9 +115,9 @@ def peek_flight_log(cfg, db, fname, flight_log):
 
     summary['duration'] = ( end_time - beg_time )
 
-    summary['engine_running'] = ( flight_log_df.iloc[-1]['E1 RPM'] > 0 )
-    summary['ias'] = flight_log_df.iloc[-1]['IAS']
-    summary['alt'] = flight_log_df.iloc[-1]['AltMSL']
+    summary['engine_still_running'] = bool( flight_log_df.iloc[-1]['E1 RPM'] > 500)
+    summary['final_ias'] = flight_log_df.iloc[-1]['IAS']
+    summary['final_alt'] = flight_log_df.iloc[-1]['AltMSL']
 
     return summary
 
@@ -127,20 +127,9 @@ def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
 
     bfname = os.path.basename(fname)
 
-    Q = Query()
-    result = db.search((Q.type == "log") & (Q.fname == bfname))
-
-    update = False
-    if len(result) > 0:
-        if cfg.get("force") == True:
-            update = True
-        else:
-            logging.info("Already have processed %s", bfname)
-            return
-
     if flight_log is None:
         return None
-
+        
     airframe_info, flight_log_df = g1000.parse_flight_log(flight_log)
     
     dname = os.path.splitext(bfname)[0] + ".pkl"
@@ -170,32 +159,62 @@ def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
         'size': len(flight_log)
     }
     
-    if update == False:
-        logging.info("Inserting record %s:", record)
-        db.insert(record)
-    else:
-        logging.info("Updating record %s:", record)
-        db.update(record, (Q.type == "log") & (Q.fname == bfname))
-
     if save_pkl:
         flight_log_df.to_pickle(dpath)
 
-    return flight_log_summary
+    return record
 
-def report_flight(nCard, record, flight_log, **kwargs):
+def report_flight(nCard, db, record, flight_log, **kwargs):
     # Skip empty records
     if record is None:
+        logging.debug("Not reporting, no record provided")
         return
 
+    if not record.get('flight_log_summary'):
+        logging.debug("Not reporting, flight log summary is empty")
+        return
+
+    flight_log_summary = record.get('flight_log_summary')
+
+    if not flight_log:
+        logging.debug("Not reporting, flight log is empty")
+        return
+
+    logging.debug("Reporting flight %s", record)
+    Q = Query()
+    result = db.search((Q.type == "log") & (Q.fname == record['fname']))
+
+    update = False
+    reported_size = 0
+    current_size = len(flight_log)
+    if len(result) > 0:
+        logging.info("Updating record %s:", record['fname'])
+        update = True
+        reported_size = result[0].get('size', 0)
+        db.update(record, (Q.type == "log") & (Q.fname == record['fname']))
+    else:
+        logging.info("Inserting record %s:", record['fname'])
+        reported_size = current_size
+        db.insert(record)
+
     # Skip reporting of zero hour flights
-    if kwargs.get("report_zero_hour_flights", False) == False and record.get("hobbs_time", 0) < 0.05:
+    if kwargs.get("report_zero_hour_flights", False) == False and flight_log_summary.get("hobbs_time", 0) < 0.05:
         logging.info("Skipping zero hour flight")
         return
 
+    # Skip flight logs that were already reported at the desired size
+    if update == True and kwargs.get("force") != True and reported_size == current_size:
+        logging.info("Skipping flight already reported %s at size %s:", record['fname'], current_size)
+        return
+
+    if kwargs.get("force") != True and flight_log_summary.get('engine_still_running') and flight_log_summary.get('final_ias') > 50:
+        logging.info("Skipping report %s while still flying", record['fname'])
+        return
+
     if nCard:    
-        logging.info("Sending note %s", record)
+        logging.info("Sending note %s", flight_log_summary)
         req = {"req": "note.add"}
-        req["body"] = record
+        req["body"] = flight_log_summary
         rsp = nCard.Transaction(req)
 
     if kwargs.get("savvy_aviation_token") and kwargs.get("disable_savvy") != True:
@@ -224,7 +243,7 @@ def report_flight(nCard, record, flight_log, **kwargs):
                         kwargs["savvy_aviation_aircraft_id"],
                         record['fname'],
                         savvy_flight_log
-                    )
+                    ) 
             except RuntimeError:
                 logging.exception("couldn't publish to savvy aviation")
         else:
@@ -256,7 +275,7 @@ def opensync_g1000_file_process(db, nCard, **kwargs):
                     logging.exception("Unexpected error processing flight log %s", fpath)
                 # If a record was created and we are connected to a notecard,
                 # send the message
-                report_flight(nCard, record, flight_log, **kwargs)
+                report_flight(nCard, db, record, flight_log, **kwargs)
 
 def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
     #############################
@@ -346,7 +365,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         now = datetime.datetime.now().astimezone(pytz.UTC)
                         tdelta = abs(now - card_now)
                         logging.info("Card time %s System time %s Delta %s", card_now, now, tdelta)
-                        if tdelta > datetime.timedelta(seconds=30):
+                        if tdelta > datetime.timedelta(seconds=30):    
                             set_time = "sudo date -s '%s'" % card_now.strftime("%Y-%m-%d %H:%M:%S")
                             logging.debug("Setting time: %s", set_time)
                             os.system(set_time)
@@ -413,9 +432,19 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                 # unless Force is true
                 Q = Query()
                 result = db.search((Q.type == "log") & (Q.fname == fname))
-                if len(result) > 0 and kwargs.get("force") != True:
+
+                needs_update = True
+                if len(result) > 0:
+                    try:
+                        needs_update = (result[0].get('size') > int(filesize))
+                    except ValueError:
+                        logging.exception("unexpected error comparing file sizes")
+                        needs_update = False
+                    logging.debug("Already have seen %s (%s): processed size %s current size %s", fname, needs_update, result[0].get('size'), filesize)
+
+                if needs_update == False and (kwargs.get("force") != True):
                     # The file is in the database and force isn't used, so skip the file
-                    logging.debug("Already have processed %s: processed size %s current size %s", fname, result[0].get('size'), filesize)
+                    logging.debug("Already have processed %s", fname)
                 else:
                     # The pending files list is a set of files that we have seen, but haven't yet
                     # processed.  If a file stays the same size for two checks then it gets processed
@@ -467,8 +496,8 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                             logging.info("File pending %s current size %s bytes %s: %s", fname, filesize, len(flight_log), flight_summary)   
                             continue
                         else:
-                            if flight_summary.get('engine_running'):
-                                logging.info("File %s is still pending at %s bytes because engine is running", fname, filesize)
+                            if flight_summary.get('engine_still_running') and flight_summary.get('final_ias') > 50:
+                                logging.info("File %s is still pending at %s bytes because we are still flying", fname, filesize)
                                 continue
                             else:
                                 _, flight_log = pending_files.pop(fname)
@@ -484,7 +513,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         except:
                             logging.info("Unexpected error downloading file")
                             break
-
+                    
                     # Process the flight log
                     logging.info("Processing %s at %s", fname, download_fname)
                     record = None
@@ -495,17 +524,18 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
 
                     # If a record was created and we are connected to a notecard,
                     # send the message
-                    report_flight(nCard, record, flight_log, **kwargs)
+                    report_flight(nCard, db, record, flight_log, **kwargs)
             logging.info("finished polling check")
         # Sleep 1 second
         time.sleep(1)
 
     logging.info("Beginning shutdown process, processing %s pending files", len(pending_files))
 
-    # Log power-up
-    req = {"req": "hub.log"}
-    req["text"] = "Open Sync Has %s pending files" % len(pending_files)
-    rsp = nCard.Transaction(req)
+    # Log power-down
+    if nCard:
+        req = {"req": "hub.log"}
+        req["text"] = "Open Sync Power Down has %s pending files" % len(pending_files)
+        rsp = nCard.Transaction(req)
 
     for fname, (_, flight_log) in pending_files.items():
         logging.info("Processing %s", fname)
@@ -519,7 +549,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
 
         # If a record was created and we are connected to a notecard,
         # send the message
-        report_flight(nCard, record, flight_log, **kwargs)
+        report_flight(nCard, db, record, flight_log, **kwargs)
 
 def opensync_standalone_process(db, nCard, **kwargs):
     # Check if a battery is available, if not then once the batteries are turned off
