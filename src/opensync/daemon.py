@@ -92,6 +92,35 @@ def external_power_available():
         global EXTERNAL_POWER
         return EXTERNAL_POWER
 
+def peek_flight_log(cfg, db, fname, flight_log):
+    airframe_info, flight_log_df = g1000.parse_flight_log(flight_log)
+
+    summary = {}
+
+    beg_time = datetime.datetime.combine(
+        flight_log_df.iloc[0]['Lcl Date'].date(),
+        flight_log_df.iloc[0]['Lcl Time'].time(),
+        flight_log_df.iloc[0]['UTCOfst']
+    )
+
+    end_time = datetime.datetime.combine(
+        flight_log_df.iloc[-1]['Lcl Date'].date(),
+        flight_log_df.iloc[-1]['Lcl Time'].time(),
+        flight_log_df.iloc[-1]['UTCOfst']
+    )
+
+    summary['beg_time'] = beg_time.isoformat()
+
+    summary['end_time'] = end_time.isoformat()
+
+    summary['duration'] = ( end_time - beg_time )
+
+    summary['engine_running'] = ( flight_log_df.iloc[-1]['E1 RPM'] > 0 )
+    summary['ias'] = flight_log_df.iloc[-1]['IAS']
+    summary['alt'] = flight_log_df.iloc[-1]['AltMSL']
+
+    return summary
+
 def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
     logging.info("Processing flight log %s", fname)
     flight_log_metadata = re.match("log_(\d+)_(\d+)_(.*).csv", os.path.basename(fname))
@@ -127,7 +156,8 @@ def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
         origin = flight_log_metadata.group(3)
     
     flight_log_summary = g1000.summarize_flight_log(flight_log_df)
-    flight_log_summary['origin'] = origin
+    if origin != "UNK" or not flight_log_summary.get("origin"):
+        flight_log_summary['origin'] = origin
     flight_log_summary['airframe_info'] = airframe_info
     flight_log_summary['fname'] = bfname
 
@@ -136,7 +166,8 @@ def process_flight_log(cfg, db, fname, flight_log, save_pkl=False):
         'fname': bfname,
         'datapath': dpath,
         'origin': origin,
-        'flight_log_summary': flight_log_summary
+        'flight_log_summary': flight_log_summary,
+        'size': len(flight_log)
     }
     
     if update == False:
@@ -315,7 +346,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         now = datetime.datetime.now().astimezone(pytz.UTC)
                         tdelta = abs(now - card_now)
                         logging.info("Card time %s System time %s Delta %s", card_now, now, tdelta)
-                        if tdelta > datetime.timedelta(seconds=2):    
+                        if tdelta > datetime.timedelta(seconds=30):
                             set_time = "sudo date -s '%s'" % card_now.strftime("%Y-%m-%d %H:%M:%S")
                             logging.debug("Setting time: %s", set_time)
                             os.system(set_time)
@@ -346,6 +377,9 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         data_log_path = "/data_log"
                         if version[8:10] != "W4":
                             logging.info("Using earlier version of FlashAir")
+                            sdcard.legacy = True
+                        else:
+                            sdcard.legacy = False
                     except requests.exceptions.ConnectionError:
                         logging.info("Waiting for connection to flashAir card")
                         sdcard = None
@@ -360,11 +394,17 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                 logging.info("Lost connection to sd card")
                 continue
 
-            # Filter out to only include G1000 logss
-            files = list(filter(
-                lambda x: re.match("log_\d+_\d+_(.*).csv", x[1]) != None,
-                files
-            ))
+            # Filter out to only include G1000 logs
+            if getattr(sdcard, "legacy") != True:
+                files = list(filter(
+                    lambda x: re.match("log_\d+_\d+_(.*).csv", x[1]) != None,
+                    files
+                ))
+            else:
+                files = list(filter(
+                    lambda x: re.match("LOG_(.*).CSV", x[1]) != None,
+                    files
+                ))
             logging.info("Card has %s files on it, %s files pending", len(files), len(pending_files))
     
             # For each file currently on the SD card
@@ -375,7 +415,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                 result = db.search((Q.type == "log") & (Q.fname == fname))
                 if len(result) > 0 and kwargs.get("force") != True:
                     # The file is in the database and force isn't used, so skip the file
-                    logging.debug("Already have processed %s", fname)
+                    logging.debug("Already have processed %s: processed size %s current size %s", fname, result[0].get('size'), filesize)
                 else:
                     # The pending files list is a set of files that we have seen, but haven't yet
                     # processed.  If a file stays the same size for two checks then it gets processed
@@ -393,7 +433,7 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         logging.debug("File %s is currently %s bytes", fname, filesize)
                         pending_files[fname] = (filesize, None)
                         continue
-                    elif (pending_files[fname][0] != filesize):
+                    else:
                         # If the file is changing then it's the currently active log file,
                         # download it so that when the batteries are turned off (thus cutting power
                         # to opensync) it can be processed
@@ -406,13 +446,33 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         except:
                             logging.info("Unexpected error downloading file")
                             break
-                        pending_files[fname] = (filesize, flight_log)
-                        logging.info("File %s current size %s", fname, filesize)   
-                        continue
-                    else:
-                        logging.debug("File %s is not longer pending at %s bytes", fname, filesize)
-                        # The file hasn't changed size, so it can be processed now
-                        _, flight_log = pending_files.pop(fname)
+
+                        if not flight_log:
+                            logging.info("Unexpected empty flight log")
+                            break
+
+                        try:
+                            flight_summary = peek_flight_log(kwargs, db, fname, flight_log)
+                        except:
+                            logging.exception("Unexpected error peeking at flight_log")
+                            flight_summary = {}
+
+                        old_flight_log = pending_files[fname][1]
+                        if old_flight_log is None:
+                            old_flight_log_size = 0
+                        else:
+                            old_flight_log_size = len(old_flight_log)
+                        if (pending_files[fname][0] != filesize) or old_flight_log_size != len(flight_log):
+                            pending_files[fname] = (filesize, flight_log)
+                            logging.info("File pending %s current size %s bytes %s: %s", fname, filesize, len(flight_log), flight_summary)   
+                            continue
+                        else:
+                            if flight_summary.get('engine_running'):
+                                logging.info("File %s is still pending at %s bytes because engine is running", fname, filesize)
+                                continue
+                            else:
+                                _, flight_log = pending_files.pop(fname)
+                                logging.debug("File %s is no longer pending at %s bytes %s: %s", fname, filesize, len(flight_log), flight_summary)
 
                     # If the file hasn't been downloaded yet
                     if flight_log is None:
@@ -424,6 +484,8 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                         except:
                             logging.info("Unexpected error downloading file")
                             break
+
+                    # Process the flight log
                     logging.info("Processing %s at %s", fname, download_fname)
                     record = None
                     try:
@@ -434,11 +496,17 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
                     # If a record was created and we are connected to a notecard,
                     # send the message
                     report_flight(nCard, record, flight_log, **kwargs)
-
+            logging.info("finished polling check")
         # Sleep 1 second
         time.sleep(1)
 
     logging.info("Beginning shutdown process, processing %s pending files", len(pending_files))
+
+    # Log power-up
+    req = {"req": "hub.log"}
+    req["text"] = "Open Sync Has %s pending files" % len(pending_files)
+    rsp = nCard.Transaction(req)
+
     for fname, (_, flight_log) in pending_files.items():
         logging.info("Processing %s", fname)
         record = None
@@ -536,15 +604,15 @@ def opensync(**kwargs):
                     logging.info("Setting %s = %s", env_key[9:], env_val)
                     kwargs[env_key[9:]] = env_val
 
-        # Set periodic hub sync by default
+        # Set minimum hub sync by default
         req = {"req": "hub.set"}
-        req['mode'] = "periodic"
+        req['mode'] = "minimum"
         req['outbound'] = 2
         if kwargs.get('product'):
             req['product'] = kwargs['product']
-        logging.info("Setting periodic mode %s", rsp)
+        logging.info("Setting minimum mode %s", rsp)
         rsp = nCard.Transaction(req)
-        logging.info("Setting periodic mode %s => %s", req, rsp)
+        logging.info("Setting minimum mode %s => %s", req, rsp)
 
         # Log power-up
         req = {"req": "hub.log"}
@@ -614,6 +682,10 @@ def opensync(**kwargs):
         else:
             # GPS only
             opensync_standalone_process(db, nCard, **kwargs)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    except:
+        logging.exception("Unexpected error in mainloop")
     finally:
         logging.info("Leaving mainloop")
         # Syncronize any remaining notes on shutdown
@@ -621,6 +693,11 @@ def opensync(**kwargs):
             req = {"req": "card.wireless"}
             rsp = nCard.Transaction(req)
             logging.info("Card wireless %s", rsp)
+
+            # Log power-up
+            req = {"req": "hub.log"}
+            req["text"] = "Open Sync Is Stopping"
+            rsp = nCard.Transaction(req)
 
             logging.info("Performing hub sync")
             req = {"req": "hub.sync"}
@@ -683,7 +760,7 @@ def main():
     )
     parser.add_argument(
         "--poll-period",
-        default=10,
+        default=30,
         type=int,
         help="the data polling period"
     )

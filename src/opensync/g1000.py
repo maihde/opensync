@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import pandas as pd
+import numpy as np
 import datetime
 import logging
 import math
@@ -111,6 +112,39 @@ G1000_TYPES = {
     'mt': str,
 }
 
+def iter_parse_flight_log(flight_log_lines, flight_log_types, flight_log_fields):
+    try:
+        time_fields = (
+            flight_log_fields.index('Lcl Date'),
+            flight_log_fields.index('Lcl Time'),
+            flight_log_fields.index('UTCOfst')
+        )
+    except ValueError:
+        time_fields = None
+
+    # Next lines are CSV values
+    for ll in  flight_log_lines:
+        data_record = []
+        for ii, vv in enumerate( ll.split(",") ):
+            field_type = flight_log_types[ii]
+            field_name = flight_log_fields[ii]
+            field_coerce = G1000_TYPES.get(field_type, str)
+            data_record.append( field_coerce(vv.strip()) )
+
+        # only report full data records
+        if len(data_record) == len(flight_log_fields):
+            if time_fields:
+                # Join the date and utc offset into the time record
+                # so that you can use that column by itself, otherwise
+                # Lcl Time will use the date from the system clock
+                data_record[time_fields[1]] = datetime.datetime.combine(
+                    data_record[time_fields[0]].date(),
+                    data_record[time_fields[1]].time(),
+                    data_record[time_fields[2]],
+                )
+
+            yield data_record
+
 def parse_flight_log(flight_log):
     # The first line is the airframe info
     lines = [ x.strip() for x in flight_log.split("\n") ]
@@ -132,21 +166,8 @@ def parse_flight_log(flight_log):
     types = [ x.strip("#").strip() for x in lines[1].split(",") ]
     fields = [ x.strip() for x in lines[2].split(",") ]
 
-    # Next lines are CSV values
-    for ll in lines[3:]:
-        data_record = []
-        for ii, vv in enumerate( ll.split(",") ):
-            field_type = types[ii]
-            field_name = fields[ii]
-            field_coerce = G1000_TYPES.get(field_type, str)
-            data_record.append( field_coerce(vv.strip()) )
- 
-        # skip over partial records
-        if len(data_record) == len(fields):
-            flight_log.append(data_record)
-
     data = pd.DataFrame.from_records(
-        flight_log,
+        iter_parse_flight_log(lines[3:], types, fields),
         columns = fields
     )
     logging.info("loaded airframe info %s", airframe_info)
@@ -185,8 +206,16 @@ def summarize_flight_log(flight_log_df):
     # and such, see if we can find some smoothing filter
     summary['max_fuel'] = total_fuel_rolling[30:60].max()
     summary['min_fuel'] = total_fuel_rolling[-15:].min()
-    summary['fuel_consumed'] = summary['max_fuel'] - summary['min_fuel']
     summary['fuel_remaining'] = summary['min_fuel']
+
+    # Trapizodal integration over the data
+    try:
+        summary['fuel_consumed'] = 0
+        fuel_flow = flight_log_df[['Lcl Time', 'E1 FFlow']].dropna()
+        summary['fuel_consumed'] = np.trapz(y=fuel_flow['E1 FFlow'], x=fuel_flow['Lcl Time'].astype('int64')) / (3600 * 10**9)
+    except:
+        logging.exception("error calculating fuel consumed")
+        summary['fuel_consumed'] = summary['max_fuel'] - summary['min_fuel']
 
     # Engine Summary
     summary['max_cht'] = [ flight_log_df[f'E1 CHT{ii}'].max() for ii in range(1,7) ]

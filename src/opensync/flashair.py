@@ -68,6 +68,10 @@ class FlashAir(object):
         self.baseurl = baseurl
     
     def version(self):
+        """
+        F24A6W3AW1.00.03
+        F15DBW3BW4.00.03
+        """
         r = requests.get(f"{self.baseurl}/command.cgi?op=108")
         if r.status_code != 200:
             raise RuntimeError("Failed to fetch version")
@@ -140,6 +144,8 @@ class FlashAir(object):
             if self.isFile(attributes):
                 url = f"{self.baseurl}{dname}/{fname}"
                 result.append((f"{dname}/{fname}", fname, created_at, size_bytes))
+            else:
+                logging.debug("skipping %s because it's not a file %s", fname, line)
         return result
 
     def dirs(self, directory="/"):
