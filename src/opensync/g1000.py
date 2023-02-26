@@ -122,6 +122,10 @@ def iter_parse_flight_log(flight_log_lines, flight_log_types, flight_log_fields)
     except ValueError:
         time_fields = None
 
+    # If there are no time fields we should just skip
+    if time_fields is None:
+        return
+
     # Next lines are CSV values
     for ll in  flight_log_lines:
         data_record = []
@@ -129,21 +133,34 @@ def iter_parse_flight_log(flight_log_lines, flight_log_types, flight_log_fields)
             field_type = flight_log_types[ii]
             field_name = flight_log_fields[ii]
             field_coerce = G1000_TYPES.get(field_type, str)
-            data_record.append( field_coerce(vv.strip()) )
+            try:
+                data_record.append( field_coerce(vv.strip()) )
+            except ValueError:
+                logging.exception("Failed to coerce field %s with value %s", field_name, vv.strip())
+                continue
 
-        # only report full data records
-        if len(data_record) == len(flight_log_fields):
-            if time_fields:
-                # Join the date and utc offset into the time record
-                # so that you can use that column by itself, otherwise
-                # Lcl Time will use the date from the system clock
-                data_record[time_fields[1]] = datetime.datetime.combine(
-                    data_record[time_fields[0]].date(),
-                    data_record[time_fields[1]].time(),
-                    data_record[time_fields[2]],
-                )
+        # only report full data records with time
+        if len(data_record) != len(flight_log_fields):
+            continue
 
-            yield data_record
+        _date = data_record[time_fields[0]]
+        _time = data_record[time_fields[1]]
+        _tz = data_record[time_fields[2]]
+
+        # skip rows that can't create a valid time
+        if (_date is None) or (_time is None) or (_tz is None):
+            continue
+
+        # Join the date and utc offset into the time record
+        # so that you can use that column by itself, otherwise
+        # Lcl Time will use the date from the system clock
+        data_record[time_fields[1]] = datetime.datetime.combine(
+            data_record[time_fields[0]].date(),
+            data_record[time_fields[1]].time(),
+            data_record[time_fields[2]],
+        )
+
+        yield data_record
 
 def parse_flight_log(flight_log):
     # The first line is the airframe info
@@ -212,7 +229,7 @@ def summarize_flight_log(flight_log_df):
     try:
         summary['fuel_consumed'] = 0
         fuel_flow = flight_log_df[['Lcl Time', 'E1 FFlow']].dropna()
-        summary['fuel_consumed'] = np.trapz(y=fuel_flow['E1 FFlow'], x=fuel_flow['Lcl Time'].astype('int64')) / (3600 * 10**9)
+        summary['fuel_consumed'] = np.trapz(y=fuel_flow['E1 FFlow'], x=fuel_flow['Lcl Time'].view('int64')) / (3600 * 10**9)
     except:
         logging.exception("error calculating fuel consumed")
         summary['fuel_consumed'] = summary['max_fuel'] - summary['min_fuel']

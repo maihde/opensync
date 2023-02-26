@@ -427,20 +427,29 @@ def opensync_g1000_wifi_sdcard_process(db, nCard, **kwargs):
             logging.info("Card has %s files on it, %s files pending", len(files), len(pending_files))
     
             # For each file currently on the SD card
-            for download_fname, fname, created_at, filesize in files:
+            for download_fname, fname, created_at, filesize in sorted(files, key=lambda x: x[1]):
                 # Check if it's in our local database and skip processing it
                 # unless Force is true
                 Q = Query()
                 result = db.search((Q.type == "log") & (Q.fname == fname))
 
-                needs_update = True
+                needs_update = False
+                
+                if filesize is None:
+                    filesize = 0
+
                 if len(result) > 0:
-                    try:
-                        needs_update = (result[0].get('size') > int(filesize))
-                    except ValueError:
-                        logging.exception("unexpected error comparing file sizes")
-                        needs_update = False
+                    # TODO do we want to re-process old files?  Given the polling loop, the processed file will likey be smaller
+                    # than the file currently on the SD card
+                    
+                    #try:
+                    #    needs_update = (result[0].get('size') < int(filesize))
+                    #except:
+                    #    logging.exception("unexpected error comparing file sizes")
+                    #    needs_update = False
                     logging.debug("Already have seen %s (%s): processed size %s current size %s", fname, needs_update, result[0].get('size'), filesize)
+                else:
+                    needs_update = True
 
                 if needs_update == False and (kwargs.get("force") != True):
                     # The file is in the database and force isn't used, so skip the file
